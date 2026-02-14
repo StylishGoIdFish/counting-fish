@@ -1,19 +1,19 @@
 version: '3.8'
 
 services:
-  # --- The "Attacker" API ---
+  # --- Backend ---
   backend:
     build: ./backend
-    container_name: attacker_api
+    container_name: shark_bite
     ports:
       - "8000:8000"  # Maps localhost:8000 to container:8000
     volumes:
-      - ./backend:/app  # Live Reload: Changes to main.py apply instantly!
+      - ./backend:/app  # live Reload for main.py
 
-  # --- The "Malicious" Website ---
+  # --- Frontend ---
   frontend:
     build: ./frontend
-    container_name: malicious_site
+    container_name: bruce_site
     ports:
       - "3000:80"    # Maps localhost:3000 to Nginx port 80
     depends_on:
