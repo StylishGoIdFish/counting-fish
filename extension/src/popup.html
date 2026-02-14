@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>CountingFish</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="name">CountingFish</div>
+        <div class="site" id="siteText">—</div>
+      </div>
+      <div class="pill" id="riskPill">—</div>
+    </div>
+
+    <div class="card">
+      <div class="scoreRow">
+        <div>
+          <div class="label">Risk score</div>
+          <div class="score" id="scoreText">—</div>
+        </div>
+        <div class="controls">
+          <div class="label">Mode</div>
+          <div class="btnRow">
+            <button class="btn" id="btnOff">Off</button>
+            <button class="btn" id="btnMonitor">Monitor</button>
+            <button class="btn" id="btnHarden">Harden</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="toggle">
+          <input type="checkbox" id="autoHardenToggle" />
+          <span>Auto Harden</span>
+        </label>
+
+        <div class="qms">
+          <label for="qmsInput">Quantize (ms)</label>
+          <input id="qmsInput" type="number" min="1" max="50" step="1" value="2" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="label">Why</div>
+      <ul class="reasons" id="reasonsList">
+        <li>—</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="label">Telemetry (last second)</div>
+      <div class="telemetry">
+        <div><span class="k">performance.now</span><span class="v" id="tPerf">—</span></div>
+        <div><span class="k">Date.now</span><span class="v" id="tDate">—</span></div>
+        <div><span class="k">rAF</span><span class="v" id="tRaf">—</span></div>
+        <div><span class="k">burst /100ms</span><span class="v" id="tBurst">—</span></div>
+        <div><span class="k">WASM</span><span class="v" id="tWasm">—</span></div>
+        <div><span class="k">Workers</span><span class="v" id="tWorkers">—</span></div>
+      </div>
+
+      <div class="foot" id="updatedText">—</div>
+    </div>
+
+    <div class="hint" id="hintText"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
