@@ -8,16 +8,16 @@ from pydantic import BaseModel
 app = FastAPI()
 
 # Enable CORS
-# This allows your frontend (Port 3000 or file://) to talk to this backend (Port 8000)
+# allows frontend to talk to this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your domain. For hackathon, "*" is fine.
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 class TraceRequest(BaseModel):
-    trace: list[float]  # We expect a list of numbers (the trace)
+    trace: list[float] 
 
 MODEL_PATH = "model.pkl"
 model = None
@@ -43,17 +43,8 @@ def analyze_trace(request: TraceRequest):
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded. Run train.py first.")
 
-    # 1. Prepare Data
-    # Convert list to 2D Numpy array (1 sample, N features)
-    # expected shape: (1, length_of_trace)
     input_data = np.array(request.trace).reshape(1, -1)
-
-    # 2. Predict Website
     prediction = model.predict(input_data)[0]
-
-    # 3. Calculate Confidence
-    # predict_proba returns an array of probabilities for all classes
-    # We take the maximum value (the confidence of the winning class)
     probabilities = model.predict_proba(input_data)
     confidence = np.max(probabilities)
 
@@ -66,5 +57,5 @@ def analyze_trace(request: TraceRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    # This allows you to run "python main.py" locally for testing
+    # for local testing
     uvicorn.run(app, host="0.0.0.0", port=8000)
