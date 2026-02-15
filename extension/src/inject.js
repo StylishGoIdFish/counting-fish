@@ -31,6 +31,10 @@ function startCountingFish() {
   var qMs = 2;            // quantization bucket in ms
 
 
+  // Keep references to all wrapped workers so we can update their mode later
+  var trackedWorkers = [];
+
+
   // ----------------------------------------------------
 // Telemetry Counters
 //
@@ -51,8 +55,15 @@ function startCountingFish() {
   var counts = {
     perfNow: 0,
     dateNow: 0,
-    raf: 0
+    raf: 0,
+
+    // Worker-side counters (reported by our worker wrapper)
+    workerPerfNow: 0,
+    workerDateNow: 0,
+    workerBurstMax: 0
   };
+
+
 
   var flags = {
     wasmUsed: false,
@@ -123,7 +134,11 @@ function startCountingFish() {
         counts: {
           perfNow: counts.perfNow,
           dateNow: counts.dateNow,
-          raf: counts.raf
+          raf: counts.raf,
+
+          workerPerfNow: counts.workerPerfNow,
+          workerDateNow: counts.workerDateNow,
+          workerBurstMax: counts.workerBurstMax
         },
         bursts: {
           perfNowPer100msMax: perfNowPer100msMax
@@ -144,13 +159,17 @@ function startCountingFish() {
     counts.raf = 0;
     perfNowPer100msMax = 0;
 
+    counts.workerPerfNow = 0;
+    counts.workerDateNow = 0;
+    counts.workerBurstMax = 0;
+
+
   }, 1000);
 
   // -----------------------------
   // Listen for mode updates
   // -----------------------------
   window.addEventListener("message", function (event) {
-
     var data = event.data;
     if (!data) return;
     if (data.source !== "countingfish") return;
@@ -163,6 +182,19 @@ function startCountingFish() {
     if (typeof data.q_ms === "number") {
       qMs = data.q_ms;
     }
+      // Propagate new mode to all tracked workers
+    for (var i = 0; i < trackedWorkers.length; i++) {
+      try {
+        trackedWorkers[i].postMessage({
+          __cf: "set_mode",
+          mode: mode,
+          q_ms: qMs
+        });
+      } catch (e) {
+        // Worker might already be terminated; ignore.
+      }
+    }
+
 
   });
 
@@ -280,26 +312,165 @@ function startCountingFish() {
     }
   }
 
-// ----------------------------------------------------
-// Wrap Worker constructor
-//
-// Workers are sometimes used to isolate timing loops
-// and reduce interference.
-//
-// We count how many workers are created.
-// ----------------------------------------------------
+  // ----------------------------------------------------
+  // Wrap Worker constructor
+  //
+  // Workers are sometimes used to isolate timing loops
+  // and reduce interference.
+  //
+  // We count how many workers are created.
+  // ----------------------------------------------------
 
+    // -----------------------------
+  // Wrap Worker constructor (instrument + count)
+  // Supports classic workers (importScripts). Falls back for module workers.
+  // -----------------------------
   if (typeof window.Worker === "function") {
 
     var RealWorker = window.Worker;
 
-    window.Worker = function () {
+    function buildWorkerWrapperSource(originalUrl) {
+      return `
+        (function () {
+          "use strict";
+
+          var mode = "monitor";
+          var qMs = 2;
+
+          var counts = { perfNow: 0, dateNow: 0 };
+          var perfNowWindowCount = 0;
+          var perfNowPer100msMax = 0;
+
+          function quantizeMs(t) {
+            return Math.floor(t / qMs) * qMs;
+          }
+
+          // Burst window reset every 100ms
+          setInterval(function () {
+            if (perfNowWindowCount > perfNowPer100msMax) {
+              perfNowPer100msMax = perfNowWindowCount;
+            }
+            perfNowWindowCount = 0;
+          }, 100);
+
+          // Send telemetry to the page every 1s
+          setInterval(function () {
+            try {
+              postMessage({
+                __cf: "worker_telemetry",
+                payload: {
+                  counts: { perfNow: counts.perfNow, dateNow: counts.dateNow },
+                  bursts: { perfNowPer100msMax: perfNowPer100msMax },
+                  mode: mode,
+                  q_ms: qMs,
+                  ts: Date.now()
+                }
+              });
+            } catch (e) {}
+
+            counts.perfNow = 0;
+            counts.dateNow = 0;
+            perfNowPer100msMax = 0;
+          }, 1000);
+
+          // Listen for mode updates from the page
+          self.addEventListener("message", function (e) {
+            var d = e.data;
+            if (!d || d.__cf !== "set_mode") return;
+
+            if (d.mode === "off" || d.mode === "monitor" || d.mode === "harden") {
+              mode = d.mode;
+            }
+            if (typeof d.q_ms === "number" && isFinite(d.q_ms) && d.q_ms > 0 && d.q_ms <= 50) {
+              qMs = d.q_ms;
+            }
+          });
+
+          // Wrap performance.now
+          if (self.performance && typeof self.performance.now === "function") {
+            var realPerfNow = self.performance.now.bind(self.performance);
+
+            self.performance.now = function () {
+              counts.perfNow++;
+              perfNowWindowCount++;
+
+              var t = realPerfNow();
+              if (mode === "harden") return quantizeMs(t);
+              return t;
+            };
+          }
+
+          // Wrap Date.now
+          if (typeof Date.now === "function") {
+            var realDateNow = Date.now.bind(Date);
+
+            Date.now = function () {
+              counts.dateNow++;
+              var t = realDateNow();
+              if (mode === "harden") return quantizeMs(t);
+              return t;
+            };
+          }
+
+          // Load the original worker script AFTER wrappers are installed
+          try {
+            importScripts(${JSON.stringify(originalUrl)});
+          } catch (e) {
+            try { postMessage({ __cf: "worker_error", error: String(e) }); } catch (e2) {}
+          }
+        })();
+      `;
+    }
+
+    window.Worker = function (scriptUrl, options) {
+      // Count worker creation (page-level flag)
       flags.workersSpawned++;
-      return new RealWorker(arguments[0], arguments[1]);
+
+      // Module workers: v1 fallback (importScripts doesn't work in modules)
+      if (options && options.type === "module") {
+        return new RealWorker(scriptUrl, options);
+      }
+
+      var originalUrl = String(scriptUrl);
+
+      // Create wrapper worker from a Blob
+      var wrapperSrc = buildWorkerWrapperSource(originalUrl);
+      var blob = new Blob([wrapperSrc], { type: "text/javascript" });
+      var blobUrl = URL.createObjectURL(blob);
+
+      var w = new RealWorker(blobUrl);
+      trackedWorkers.push(w);
+      try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+
+      // Send current mode immediately
+      try { w.postMessage({ __cf: "set_mode", mode: mode, q_ms: qMs }); } catch (e) {}
+
+      // Merge worker telemetry into page telemetry counters
+      w.addEventListener("message", function (evt) {
+        var d = evt.data;
+        if (!d || !d.__cf) return;
+
+        if (d.__cf === "worker_telemetry" && d.payload) {
+          var c = d.payload.counts || {};
+          var b = d.payload.bursts || {};
+
+          counts.workerPerfNow += (c.perfNow || 0);
+          counts.workerDateNow += (c.dateNow || 0);
+
+          var wb = (b.perfNowPer100msMax || 0);
+          if (wb > counts.workerBurstMax) counts.workerBurstMax = wb;
+        }
+
+        // If you want debugging:
+        // if (d.__cf === "worker_error") console.warn("Worker wrapper error:", d.error);
+      });
+
+      return w;
     };
 
     window.Worker.prototype = RealWorker.prototype;
   }
+
 
 }
 

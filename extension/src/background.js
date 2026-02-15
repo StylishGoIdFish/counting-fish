@@ -142,8 +142,8 @@ function computeScoreAndReasons(telemetryPayload) {
   var bursts = telemetryPayload.bursts || {};
   var flags = telemetryPayload.flags || {};
 
-  var perfNow = counts.perfNow || 0;
-  var burst100 = bursts.perfNowPer100msMax || 0;
+  var perfNow = (counts.perfNow || 0) + (counts.workerPerfNow || 0);
+  var burst100 = Math.max(bursts.perfNowPer100msMax || 0, counts.workerBurstMax || 0);
   var wasmUsed = !!flags.wasmUsed;
   var workers = flags.workersSpawned || 0;
 
