@@ -41,7 +41,11 @@ Message contract:
 */
 
 (function startContentBridge() {
+
+  
   "use strict";
+  var cfSawBeacon = false;
+
 
   // // --------------------------------------------
   // // 1) Inject inject.js into the page
@@ -80,6 +84,12 @@ Message contract:
 
     if (!data || data.source !== "countingfish") return;
 
+    if (data.type === "CF_INJECTED") {
+      cfSawBeacon = true;
+      return;
+    }
+
+
     if (data.type === "CF_TELEMETRY") {
       // Forward to background with origin info
       chrome.runtime.sendMessage({
@@ -90,6 +100,13 @@ Message contract:
       });
     }
   });
+
+  // ✅ Tier 2 fallback only if Tier 1 didn't run
+  setTimeout(function () {
+    if (!cfSawBeacon) {
+      injectPageScript();
+    }
+  }, 25);
 
   // --------------------------------------------
   // 3) Receive mode updates from background/popup

@@ -151,8 +151,8 @@ function computeScoreAndReasons(telemetryPayload) {
   var bursts = telemetryPayload.bursts || {};
   var flags = telemetryPayload.flags || {};
 
-  var perfNow = counts.perfNow || 0;
-  var burst100 = bursts.perfNowPer100msMax || 0;
+  var perfNow = (counts.perfNow || 0) + (counts.workerPerfNow || 0);
+  var burst100 = Math.max(bursts.perfNowPer100msMax || 0, counts.workerBurstMax || 0);
   var wasmUsed = !!flags.wasmUsed;
   var workers = flags.workersSpawned || 0;
 
@@ -479,9 +479,44 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
    On install: set default badge behavior (optional)
 ----------------------------- */
 
+/* -----------------------------
+   Tier 1: MAIN world injector registration
+----------------------------- */
+
+async function registerMainWorldInjector() {
+  if (!chrome.scripting || !chrome.scripting.registerContentScripts) {
+    console.warn("[CF][bg] scripting API not available");
+    return;
+  }
+
+  const scriptDef = {
+    id: "cf-main-inject",
+    matches: ["<all_urls>"],
+    js: ["inject.js"],
+    runAt: "document_start",
+    world: "MAIN"
+  };
+
+  try {
+    await chrome.scripting.registerContentScripts([scriptDef]);
+    console.log("[CF][bg] MAIN-world injector registered");
+  } catch (e) {
+    // Already registered? Re-register safely.
+    try {
+      await chrome.scripting.unregisterContentScripts({ ids: ["cf-main-inject"] });
+      await chrome.scripting.registerContentScripts([scriptDef]);
+      console.log("[CF][bg] MAIN-world injector re-registered");
+    } catch (e2) {
+      console.warn("[CF][bg] Failed to register MAIN injector:", e2);
+    }
+  }
+}
+
+
 chrome.runtime.onInstalled.addListener(function () {
-  // Nice to have: show something instead of blank
   chrome.action.setBadgeText({ text: "" });
+
+  registerMainWorldInjector();
 });
 
 

@@ -24,12 +24,26 @@ CF_SET_MODE:
 
 function startCountingFish() {
 
+    // Prevent double-injection (Tier 1 + Tier 2 could both run)
+  if (window.__cf_injected_once) return;
+  window.__cf_injected_once = true;
+
+
+  console.log("[CF][inject] startCountingFish() running. readyState=", document.readyState, "time=", performance.now());
+  window.__cf_inject_loaded_at = performance.now();
+
+  
+
   // -----------------------------
   // State
   // -----------------------------
   var mode = " + JSON.stringify(mode) + ";
   var qMs = " + JSON.stringify(qMs) + ";
 
+
+
+  // Keep references to all wrapped workers so we can update their mode later
+  var trackedWorkers = [];
 
 
   // ----------------------------------------------------
@@ -52,7 +66,12 @@ function startCountingFish() {
   var counts = {
     perfNow: 0,
     dateNow: 0,
-    raf: 0
+    raf: 0,
+
+    // Worker-side counters (reported by our worker wrapper)
+    workerPerfNow: 0,
+    workerDateNow: 0,
+    workerBurstMax: 0
   };
 
   
@@ -109,7 +128,7 @@ function startCountingFish() {
   }, 100);
 
 // ----------------------------------------------------
-// Telemetry Emission (every 1 second)
+// Telemetry Emission (every 100th second)
 //
 // Every second we:
 //
@@ -139,7 +158,11 @@ function startCountingFish() {
         counts: {
           perfNow: counts.perfNow,
           dateNow: counts.dateNow,
-          raf: counts.raf
+          raf: counts.raf,
+
+          workerPerfNow: counts.workerPerfNow,
+          workerDateNow: counts.workerDateNow,
+          workerBurstMax: counts.workerBurstMax
         },
         bursts: {
           perfNowPer100msMax: perfNowPer100msMax
@@ -172,13 +195,17 @@ function startCountingFish() {
     workerAgg.flags.wasmUsed = false;
 
 
-  }, 1000);
+    counts.workerPerfNow = 0;
+    counts.workerDateNow = 0;
+    counts.workerBurstMax = 0;
+
+
+  },1000);
 
   // -----------------------------
   // Listen for mode updates
   // -----------------------------
   window.addEventListener("message", function (event) {
-
     var data = event.data;
     if (!data) return;
     if (data.source !== "countingfish") return;
@@ -191,6 +218,19 @@ function startCountingFish() {
     if (typeof data.q_ms === "number") {
       qMs = data.q_ms;
     }
+      // Propagate new mode to all tracked workers
+    for (var i = 0; i < trackedWorkers.length; i++) {
+      try {
+        trackedWorkers[i].postMessage({
+          __cf: "set_mode",
+          mode: mode,
+          q_ms: qMs
+        });
+      } catch (e) {
+        // Worker might already be terminated; ignore.
+      }
+    }
+
 
     broadcastModeToWorkers();
 
@@ -345,17 +385,21 @@ function startCountingFish() {
     }
   }
 
-// ----------------------------------------------------
-// Wrap Worker constructor
-//
-// Workers are sometimes used to isolate timing loops
-// and reduce interference.
-//
-// We count how many workers are created.
-// ----------------------------------------------------
+  // ----------------------------------------------------
+  // Wrap Worker constructor
+  //
+  // Workers are sometimes used to isolate timing loops
+  // and reduce interference.
+  //
+  // We count how many workers are created.
+  // ----------------------------------------------------
 
+    // -----------------------------
+  // Wrap Worker constructor (instrument + count)
+  // Supports classic workers (importScripts). Falls back for module workers.
+  // -----------------------------
   if (typeof window.Worker === "function") {
-
+    console.log("[CF][inject] About to wrap Worker. Worker is currently:", window.Worker);
     var RealWorker = window.Worker;
 
     function isModuleWorker(options) {
@@ -506,7 +550,13 @@ function startCountingFish() {
     
 
     window.Worker.prototype = RealWorker.prototype;
+
+     // Tell content.js that MAIN-world injection ran successfully
+    try {
+      window.postMessage({ source: "countingfish", type: "CF_INJECTED", ts: performance.now() }, "*");
+    } catch (e) {}
   }
+
 
 }
 
