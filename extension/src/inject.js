@@ -114,7 +114,7 @@ function startCountingFish() {
   }, 100);
 
 // ----------------------------------------------------
-// Telemetry Emission (every 200 millisecond)
+// Telemetry Emission (every 100th second)
 //
 // Every second we:
 //
@@ -174,7 +174,7 @@ function startCountingFish() {
     counts.workerBurstMax = 0;
 
 
-  }, 200);
+  },1000);
 
   // -----------------------------
   // Listen for mode updates

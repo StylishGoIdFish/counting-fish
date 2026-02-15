@@ -95,10 +95,18 @@ function renderState(state) {
 
   // Telemetry fields
   if (latest && latest.counts && latest.bursts && latest.flags) {
-    $("tPerf").textContent = String(latest.counts.perfNow || 0);
+
+    const perfMain = latest.counts.perfNow || 0;
+    const perfWorker = latest.counts.workerPerfNow || 0;
+    const perfTotal = perfMain + perfWorker;
+    const burstMain = latest.bursts.perfNowPer100msMax || 0;
+    const burstWorker = latest.counts.workerBurstMax || 0;
+    const burstTotal = Math.max(burstMain, burstWorker);
+
+    $("tPerf").textContent = String(latest.counts.perfTotal || 0);
     $("tDate").textContent = String(latest.counts.dateNow || 0);
     $("tRaf").textContent = String(latest.counts.raf || 0);
-    $("tBurst").textContent = String(latest.bursts.perfNowPer100msMax || 0);
+    $("tBurst").textContent = String(latest.bursts.burstTotal || 0);
     $("tWasm").textContent = (latest.flags.wasmUsed ? "yes" : "no");
     $("tWorkers").textContent = String(latest.flags.workersSpawned || 0);
   } else {

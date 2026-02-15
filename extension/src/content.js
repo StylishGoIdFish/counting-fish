@@ -70,7 +70,7 @@ Message contract:
     }
   }
 
-  //injectPageScript();
+  injectPageScript();
 
   // --------------------------------------------
   // 2) Listen for telemetry from inject.js (page)
