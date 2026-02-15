@@ -13,6 +13,26 @@
         <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center;">
             <h2>Active Monitoring Station</h2>
             <div id="status-indicator" style="color: #00ffcc;">● LIVE</div>
+
+            <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center;">
+              <h2>Active Monitoring Station</h2>
+              
+              <div style="display: flex; gap: 15px; align-items: center;">
+                  <button id="btn-scan" onclick="triggerManualScan()" style="
+                      background: transparent; 
+                      color: #00ffcc; 
+                      border: 1px solid #00ffcc; 
+                      padding: 8px 20px; 
+                      cursor: pointer; 
+                      font-family: inherit;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                      font-weight: bold;
+                  ">INITIATE SCAN</button>
+                  
+                  <div id="status-indicator" style="color: #00ffcc;">● READY</div>
+              </div>
+            </div>
         </div>
 
         <div class="zone-sonar">
@@ -38,7 +58,7 @@
         </div>
     </div>
 
-    <script src="/static/script.js"></script> 
+    <script src="script.js"></script> 
 
     <script>
         // --- 1. SETUP CHART.JS ---
@@ -75,35 +95,46 @@
             }
         });
 
-        // --- 2. CONNECT TO SENSOR (script.js) ---
-        // We override the default behavior to process the trace here
-        
-        // This function will be called by your modified script.js 
-        // OR we can poll the window.traces array.
-        
-        setInterval(() => {
-            const traces = window.traces;
-            if (traces && traces.length > 0) {
-                // Get the latest trace
-                const latestTrace = traces[traces.length - 1];
+        // --- NEW MANUAL TRIGGER LOGIC ---
+        function triggerManualScan() {
+            if (window.recording) return;
+
+            // 1. Disable Button
+            const btn = document.getElementById("btn-scan");
+            btn.disabled = true;
+            btn.style.opacity = "0.5";
+            btn.innerText = "SCANNING...";
+
+            // 2. Start the Sensor (script.js)
+            if (typeof window.collectTrace === 'function') {
+                window.collectTrace(); 
                 
-                // If we haven't processed this one yet (simple check)
-                if (window.lastProcessedTrace !== latestTrace) {
-                    window.lastProcessedTrace = latestTrace;
-                    
-                    // A. Update Graph
-                    updateSonar(latestTrace);
-                    
-                    // B. Send to Backend
-                    analyzeTrace(latestTrace);
-                }
+                // 3. Wait for the result (Polling only while recording)
+                const checkInterval = setInterval(() => {
+                    const traces = window.traces;
+                    if (traces && traces.length > 0) {
+                        const latestTrace = traces[traces.length - 1];
+                        
+                        // If this is a NEW trace we haven't seen yet
+                        if (window.lastProcessedTrace !== latestTrace) {
+                            window.lastProcessedTrace = latestTrace;
+                            
+                            // Stop checking
+                            clearInterval(checkInterval);
+                            
+                            // Process it
+                            updateSonar(latestTrace);
+                            analyzeTrace(latestTrace);
+                            
+                            // Reset Button
+                            btn.disabled = false;
+                            btn.style.opacity = "1";
+                            btn.innerText = "INITIATE SCAN";
+                        }
+                    }
+                }, 500); // Check every 0.5s
             }
-            
-            // Trigger a new scan if not recording
-            if (!window.recording && typeof window.collectTrace === 'function') {
-               window.collectTrace(); 
-            }
-        }, 1000); // Check every second
+        }
 
         function updateSonar(traceData) {
             // Downsample if trace is huge (Chart.js can lag with 3000 points)
