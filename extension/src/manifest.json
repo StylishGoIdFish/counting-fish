@@ -4,14 +4,8 @@
   "version": "0.1",
   "manifest_version": 3,
 
-  "permissions": [
-    "storage",
-    "tabs"
-  ],
-
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
 
   "background": {
     "service_worker": "background.js"
@@ -25,15 +19,15 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "world": "ISOLATED"
     }
-  ],
-  "web_accessible_resources": [
-  {
-    "resources": ["inject.js"],
-    "matches": ["<all_urls>"]
-  }
-]
-
+  ]
 }

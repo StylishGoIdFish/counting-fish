@@ -54,10 +54,25 @@ function startCountingFish() {
     raf: 0
   };
 
+  
+
   var flags = {
     wasmUsed: false,
     workersSpawned: 0
   };
+
+    // -----------------------------
+  // Worker telemetry aggregation (per-second)
+  // -----------------------------
+  var workerAgg = {
+    counts: { perfNow: 0, dateNow: 0 },
+    bursts: { perfNowPer100msMax: 0 },
+    flags: { wasmUsed: false }
+  };
+
+  // Track workers later (Step 3/4 will use this)
+  var trackedWorkers = [];
+
 
   var perfNowWindowCount = 0;
   var perfNowPer100msMax = 0;
@@ -132,6 +147,13 @@ function startCountingFish() {
           wasmUsed: flags.wasmUsed,
           workersSpawned: flags.workersSpawned
         },
+
+        workers: {
+          counts: { perfNow: workerAgg.counts.perfNow, dateNow: workerAgg.counts.dateNow },
+          bursts: { perfNowPer100msMax: workerAgg.bursts.perfNowPer100msMax },
+          flags: { wasmUsed: workerAgg.flags.wasmUsed },
+        },
+
         mode: mode,
         q_ms: qMs,
         ts: Date.now()
@@ -143,6 +165,11 @@ function startCountingFish() {
     counts.dateNow = 0;
     counts.raf = 0;
     perfNowPer100msMax = 0;
+    workerAgg.counts.perfNow = 0;
+    workerAgg.counts.dateNow = 0;
+    workerAgg.bursts.perfNowPer100msMax = 0;
+    workerAgg.flags.wasmUsed = false;
+
 
   }, 1000);
 
@@ -166,6 +193,25 @@ function startCountingFish() {
 
   });
 
+  function ingestWorkerTelemetry(payload) {
+    if (!payload) return;
+
+    var c = payload.counts || {};
+    var b = payload.bursts || {};
+    var f = payload.flags || {};
+
+    workerAgg.counts.perfNow += (c.perfNow || 0);
+    workerAgg.counts.dateNow += (c.dateNow || 0);
+
+    var burst = b.perfNowPer100msMax || 0;
+    if (burst > workerAgg.bursts.perfNowPer100msMax) {
+      workerAgg.bursts.perfNowPer100msMax = burst;
+    }
+
+    if (f.wasmUsed) workerAgg.flags.wasmUsed = true;
+  }
+
+  
 // ----------------------------------------------------
 // Telemetry Emission (every 1 second)
 //
