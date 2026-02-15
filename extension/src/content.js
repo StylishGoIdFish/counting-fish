@@ -47,30 +47,30 @@ Message contract:
   var cfSawBeacon = false;
 
 
-  // --------------------------------------------
-  // 1) Inject inject.js into the page
-  // --------------------------------------------
-  function injectPageScript() {
-    try {
-      var script = document.createElement("script");
-      script.src = chrome.runtime.getURL("inject.js");
-      script.type = "text/javascript";
-      script.async = false;
+  // // --------------------------------------------
+  // // 1) Inject inject.js into the page
+  // // --------------------------------------------
+  // function injectPageScript() {
+  //   try {
+  //     var script = document.createElement("script");
+  //     script.src = chrome.runtime.getURL("inject.js");
+  //     script.type = "text/javascript";
+  //     script.async = false;
 
-      // Put it as early as possible
-      (document.documentElement || document.head || document.body).appendChild(script);
+  //     // Put it as early as possible
+  //     (document.documentElement || document.head || document.body).appendChild(script);
 
-      // Optional cleanup: remove the tag after it loads
-      script.onload = function () {
-        script.remove();
-      };
-    } catch (e) {
-      // If injection fails, the extension can't do anything useful.
-      // You'll see errors in the console.
-    }
-  }
+  //     // Optional cleanup: remove the tag after it loads
+  //     script.onload = function () {
+  //       script.remove();
+  //     };
+  //   } catch (e) {
+  //     // If injection fails, the extension can't do anything useful.
+  //     // You'll see errors in the console.
+  //   }
+  // }
 
-  injectPageScript();
+  // injectPageScript();
 
   // --------------------------------------------
   // 2) Listen for telemetry from inject.js (page)
