@@ -10,6 +10,7 @@ Popup responsibilities:
   - CF_SET_AUTO_HARDEN
   - CF_SET_QMS
 */
+var refreshTimer = null;
 
 var currentOrigin = null;
 
@@ -109,6 +110,21 @@ function renderState(state) {
     $("tWasm").textContent = "—";
     $("tWorkers").textContent = "—";
   }
+
+    // Worker telemetry fields
+  var w = latest.workers || null;
+  if (w && w.counts && w.bursts && w.flags) {
+    $("tWPerf").textContent = String(w.counts.perfNow || 0);
+    $("tWDate").textContent = String(w.counts.dateNow || 0);
+    $("tWBurst").textContent = String(w.bursts.perfNowPer100msMax || 0);
+    $("tWWasm").textContent = (w.flags.wasmUsed ? "yes" : "no");
+  } else {
+    $("tWPerf").textContent = "—";
+    $("tWDate").textContent = "—";
+    $("tWBurst").textContent = "—";
+    $("tWWasm").textContent = "—";
+  }
+
 
   if (state.lastUpdatedTs) {
     var ageMs = Date.now() - state.lastUpdatedTs;
@@ -211,8 +227,13 @@ function init() {
     $("siteText").textContent = currentOrigin;
     refresh();
 
+
     // Optional: refresh once more after a short delay in case telemetry arrives slightly later
     setTimeout(refresh, 600);
+
+    if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(refresh, 1000);
+
   });
 }
 

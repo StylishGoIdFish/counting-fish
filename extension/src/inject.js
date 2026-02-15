@@ -27,8 +27,9 @@ function startCountingFish() {
   // -----------------------------
   // State
   // -----------------------------
-  var mode = "monitor";   // default for demo
-  var qMs = 2;            // quantization bucket in ms
+  var mode = " + JSON.stringify(mode) + ";
+  var qMs = " + JSON.stringify(qMs) + ";
+
 
 
   // ----------------------------------------------------
@@ -191,7 +192,25 @@ function startCountingFish() {
       qMs = data.q_ms;
     }
 
+    broadcastModeToWorkers();
+
   });
+
+  function broadcastModeToWorkers() {
+    for (var i = 0; i < trackedWorkers.length; i++) {
+      try {
+        trackedWorkers[i].postMessage({
+          source: "countingfish",
+          type: "CF_SET_MODE",
+          mode: mode,
+          q_ms: qMs
+        });
+      } catch (e) {
+        // worker might be dead, ignore
+      }
+    }
+  }
+
 
   function ingestWorkerTelemetry(payload) {
     if (!payload) return;
@@ -339,10 +358,152 @@ function startCountingFish() {
 
     var RealWorker = window.Worker;
 
-    window.Worker = function () {
+    function isModuleWorker(options) {
+      return options && options.type === "module";
+    }
+
+    function toAbsUrl(u) {
+      try {
+        return new URL(u, window.location.href).href;
+      } catch (e) {
+        return u;
+      }
+    }
+
+    function makeClassicBootstrapUrl(originalUrl) {
+      var abs = toAbsUrl(originalUrl);
+      console.log("CF importing:", abs);
+
+      var src =
+        "(function(){\n" +
+        "  'use strict';\n" +
+        "  var mode = 'monitor';\n" +
+        "  var qMs = 2;\n" +
+        "  function quantizeMs(t){ return Math.floor(t / qMs) * qMs; }\n" +
+
+        "  var counts = { perfNow:0, dateNow:0 };\n" +
+        "  var flags = { wasmUsed:false };\n" +
+        "  var perfNowWindowCount = 0;\n" +
+        "  var perfNowPer100msMax = 0;\n" +
+
+        "  setInterval(function(){\n" +
+        "    if(perfNowWindowCount > perfNowPer100msMax) perfNowPer100msMax = perfNowWindowCount;\n" +
+        "    perfNowWindowCount = 0;\n" +
+        "  }, 100);\n" +
+
+        "  setInterval(function(){\n" +
+        "    try {\n" +
+        "      postMessage({\n" +
+        "        source:'countingfish',\n" +
+        "        type:'CF_WORKER_TELEMETRY',\n" +
+        "        payload:{\n" +
+        "          counts:{ perfNow:counts.perfNow, dateNow:counts.dateNow },\n" +
+        "          bursts:{ perfNowPer100msMax:perfNowPer100msMax },\n" +
+        "          flags:{ wasmUsed:!!flags.wasmUsed },\n" +
+        "          ts: Date.now()\n" +
+        "        }\n" +
+        "      });\n" +
+        "    } catch(e) {}\n" +
+        "    counts.perfNow=0;\n" +
+        "    counts.dateNow=0;\n" +
+        "    perfNowPer100msMax=0;\n" +
+        "    flags.wasmUsed=false;\n" +
+        "  }, 1000);\n" +
+
+        "  addEventListener('message', function(ev){\n" +
+        "    var d = ev && ev.data;\n" +
+        "    if(!d || d.source!=='countingfish' || d.type!=='CF_SET_MODE') return;\n" +
+        "    if(d.mode==='off'||d.mode==='monitor'||d.mode==='harden') mode=d.mode;\n" +
+        "    if(typeof d.q_ms==='number') qMs=d.q_ms;\n" +
+        "  });\n" +
+
+        "  if(self.performance && typeof self.performance.now==='function'){\n" +
+        "    var realPerfNow=self.performance.now.bind(self.performance);\n" +
+        "    self.performance.now=function(){\n" +
+        "      counts.perfNow++;\n" +
+        "      perfNowWindowCount++;\n" +
+        "      var t=realPerfNow();\n" +
+        "      if(mode==='harden') return quantizeMs(t);\n" +
+        "      return t;\n" +
+        "    };\n" +
+        "  }\n" +
+
+        "  if(typeof Date.now==='function'){\n" +
+        "    var realDateNow=Date.now.bind(Date);\n" +
+        "    Date.now=function(){\n" +
+        "      counts.dateNow++;\n" +
+        "      var t=realDateNow();\n" +
+        "      if(mode==='harden') return quantizeMs(t);\n" +
+        "      return t;\n" +
+        "    };\n" +
+        "  }\n" +
+
+        "  if(self.WebAssembly){\n" +
+        "    if(typeof WebAssembly.instantiate==='function'){\n" +
+        "      var ri=WebAssembly.instantiate.bind(WebAssembly);\n" +
+        "      WebAssembly.instantiate=function(){ flags.wasmUsed=true; return ri.apply(null, arguments); };\n" +
+        "    }\n" +
+        "    if(typeof WebAssembly.instantiateStreaming==='function'){\n" +
+        "      var ris=WebAssembly.instantiateStreaming.bind(WebAssembly);\n" +
+        "      WebAssembly.instantiateStreaming=function(){ flags.wasmUsed=true; return ris.apply(null, arguments); };\n" +
+        "    }\n" +
+        "  }\n" +
+
+        "  try { importScripts(" + JSON.stringify(abs) + "); } catch(e) {}\n" +
+        "})();\n";
+
+      var blob = new Blob([src], { type: "text/javascript" });
+      return URL.createObjectURL(blob);
+    }
+
+    window.Worker = function (scriptURL, options) {
+
       flags.workersSpawned++;
-      return new RealWorker(arguments[0], arguments[1]);
+
+      if (
+        isModuleWorker(options) ||
+        typeof scriptURL === "string" &&
+        (scriptURL.startsWith("blob:") || scriptURL.startsWith("data:"))
+      ) {
+        // Skip bootstrap for module/blob/data workers
+        return new RealWorker(scriptURL, options);
+      }
+
+      var bootUrl = makeClassicBootstrapUrl(scriptURL);
+      var w = new RealWorker(bootUrl, options);
+
+      w.addEventListener("error", function (e) {
+        try { console.warn("CF bootstrap worker error:", e && (e.message || e)); } catch (_) {}
+      });
+      w.addEventListener("messageerror", function (e) {
+        try { console.warn("CF bootstrap worker messageerror:", e); } catch (_) {}
+      });
+
+
+      trackedWorkers.push(w);
+
+      // Push current mode/q_ms immediately so worker doesn't lag behind UI
+      try {
+        w.postMessage({
+          source: "countingfish",
+          type: "CF_SET_MODE",
+          mode: mode,
+          q_ms: qMs
+        });
+      } catch (e) {}
+
+
+      // Aggregate telemetry
+      w.addEventListener("message", function (ev) {
+        var d = ev && ev.data;
+        if (!d || d.source !== "countingfish" || d.type !== "CF_WORKER_TELEMETRY") return;
+        ingestWorkerTelemetry(d.payload);
+      });
+
+      return w;
     };
+
+    
 
     window.Worker.prototype = RealWorker.prototype;
   }
