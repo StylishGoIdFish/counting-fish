@@ -24,6 +24,16 @@ CF_SET_MODE:
 
 function startCountingFish() {
 
+    // Prevent double-injection (Tier 1 + Tier 2 could both run)
+  if (window.__cf_injected_once) return;
+  window.__cf_injected_once = true;
+
+
+  console.log("[CF][inject] startCountingFish() running. readyState=", document.readyState, "time=", performance.now());
+  window.__cf_inject_loaded_at = performance.now();
+
+  
+
   // -----------------------------
   // State
   // -----------------------------
@@ -104,7 +114,7 @@ function startCountingFish() {
   }, 100);
 
 // ----------------------------------------------------
-// Telemetry Emission (every 1 second)
+// Telemetry Emission (every 200 millisecond)
 //
 // Every second we:
 //
@@ -164,7 +174,7 @@ function startCountingFish() {
     counts.workerBurstMax = 0;
 
 
-  }, 1000);
+  }, 200);
 
   // -----------------------------
   // Listen for mode updates
@@ -326,7 +336,7 @@ function startCountingFish() {
   // Supports classic workers (importScripts). Falls back for module workers.
   // -----------------------------
   if (typeof window.Worker === "function") {
-
+    console.log("[CF][inject] About to wrap Worker. Worker is currently:", window.Worker);
     var RealWorker = window.Worker;
 
     function buildWorkerWrapperSource(originalUrl) {
@@ -423,6 +433,9 @@ function startCountingFish() {
     }
 
     window.Worker = function (scriptUrl, options) {
+
+      console.log("[CF][Worker hook] called with:", scriptUrl, options, "time=", performance.now());
+
       // Count worker creation (page-level flag)
       flags.workersSpawned++;
 
@@ -430,45 +443,94 @@ function startCountingFish() {
       if (options && options.type === "module") {
         return new RealWorker(scriptUrl, options);
       }
-
-      var originalUrl = String(scriptUrl);
+      
+      var originalUrl;
+      try {
+        originalUrl = new URL(String(scriptUrl), document.baseURI).href;
+      } catch (e) {
+        originalUrl = String(scriptUrl);
+      }
 
       // Create wrapper worker from a Blob
       var wrapperSrc = buildWorkerWrapperSource(originalUrl);
       var blob = new Blob([wrapperSrc], { type: "text/javascript" });
       var blobUrl = URL.createObjectURL(blob);
 
+      try {
       var w = new RealWorker(blobUrl);
+      console.log("[CF][Worker hook] wrapper worker created OK. originalUrl=", originalUrl);
+      } catch (e){
+        console.error("[CF][Worker hook] FAILED to create wrapper worker:", e);
+        console.warn("[CF][Worker hook] Falling back to real worker:", scriptUrl);
+        return new RealWorker(scriptUrl, options);
+      }
+
+
       trackedWorkers.push(w);
-      try { URL.revokeObjectURL(blobUrl); } catch (e) {}
+      // try { URL.revokeObjectURL(blobUrl); } catch (e) {}
 
       // Send current mode immediately
       try { w.postMessage({ __cf: "set_mode", mode: mode, q_ms: qMs }); } catch (e) {}
 
-      // Merge worker telemetry into page telemetry counters
+      // Intercept messages from real worker
+      var pageOnMessage = null;
+
+      // Intercept assignment to worker.onmessage
+      Object.defineProperty(w, "onmessage", {
+        get: function () {
+          return pageOnMessage;
+        },
+        set: function (handler) {
+          pageOnMessage = handler;
+        }
+      });
+
       w.addEventListener("message", function (evt) {
         var d = evt.data;
-        if (!d || !d.__cf) return;
 
-        if (d.__cf === "worker_telemetry" && d.payload) {
-          var c = d.payload.counts || {};
-          var b = d.payload.bursts || {};
+        // Handle internal telemetry
+        if (d && d.__cf) {
 
-          counts.workerPerfNow += (c.perfNow || 0);
-          counts.workerDateNow += (c.dateNow || 0);
+          if (d.__cf === "worker_telemetry" && d.payload) {
+            var c = d.payload.counts || {};
+            var b = d.payload.bursts || {};
 
-          var wb = (b.perfNowPer100msMax || 0);
-          if (wb > counts.workerBurstMax) counts.workerBurstMax = wb;
+            counts.workerPerfNow += (c.perfNow || 0);
+            counts.workerDateNow += (c.dateNow || 0);
+
+            var wb = (b.perfNowPer100msMax || 0);
+            if (wb > counts.workerBurstMax) {
+              counts.workerBurstMax = wb;
+            }
+          }
+
+          // Swallow internal messages so the page never sees them
+          return;
         }
 
-        // If you want debugging:
-        // if (d.__cf === "worker_error") console.warn("Worker wrapper error:", d.error);
+        // Forward real worker messages to the page
+        if (typeof pageOnMessage === "function") {
+          pageOnMessage.call(w, evt);
+        }
       });
 
       return w;
+      
     };
 
+    
+
+
+    console.log("[CF][inject] Worker wrapped. Worker is now:", window.Worker);
+    window.__cf_worker_wrapped_at = performance.now();
+
+
     window.Worker.prototype = RealWorker.prototype;
+
+     // Tell content.js that MAIN-world injection ran successfully
+    try {
+      window.postMessage({ source: "countingfish", type: "CF_INJECTED", ts: performance.now() }, "*");
+    } catch (e) {}
   }
 
 
