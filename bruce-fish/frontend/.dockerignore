@@ -1,0 +1,14 @@
+# --- Logs & System ---
+*.log
+.DS_Store
+Thumbs.db
+
+# --- Git & IDE ---
+.git
+.gitignore
+.vscode/
+.idea/
+
+# --- Documentation ---
+README.md
+LICENSE

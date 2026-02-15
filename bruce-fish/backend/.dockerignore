@@ -1,0 +1,29 @@
+# --- Python & Dependencies ---
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Jupyter Notebooks (Common in ML) ---
+.ipynb_checkpoints
+*.ipynb
+
+# --- Git & IDE ---
+.git
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# --- Model Training Data ---
+# Keep your 'model.pkl' (we need that!), but ignore the raw data
+# to keep the image small.
+data/
+raw_data/
+training_scripts/
