@@ -1,0 +1,296 @@
+/* --- NOIR VARIABLES --- */
+:root {
+    --void: #050505;          /* Deepest Shadow */
+    --lead: #1a1a1a;          /* Surface Grey */
+    --newsprint: #dcdcdc;     /* Aged Paper White */
+    --warning: #8b0000;       /* Dried Blood Red */
+    --font-main: 'Courier New', Courier, monospace;
+    --grain-opacity: 0.05;
+}
+
+/* --- BASE STYLES --- */
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--void);
+    color: var(--newsprint);
+    font-family: var(--font-main);
+    overflow: hidden;
+}
+
+/* --- THE STAKEOUT BACKGROUND --- */
+.landing-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    /* Replace 'background.jpg' with your filename */
+    background: url('assets/CountingFishBackground2.jpg') no-repeat center center;
+    background-size: cover;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+/* --- THE LETTERHEAD (Logo) --- */
+.logo-container {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    z-index: 10;
+    opacity: 0.9;
+    filter: grayscale(1) contrast(1.2);
+    mix-blend-mode: screen;
+}
+
+.logo-container img {
+    width: 8vw;  
+    min-width: 120px;
+    height: auto;
+}
+
+/* --- CENTRAL TEXT BOX --- */
+.hero-text-box {
+    z-index: 10;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 20px 60px;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    border-top: 1px solid var(--newsprint);
+    border-bottom: 1px solid var(--newsprint);
+    margin-bottom: 2rem;
+    transform: rotate(-1deg); /* Slight tilt for that "messy desk" feel */
+}
+
+.hero-title {
+    font-size: 2.2rem;
+    color: var(--newsprint);
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    margin: 0;
+}
+
+/* --- THE STAKEOUT BUTTON --- */
+.btn-case-file {
+    background: var(--newsprint); /* Using that 'Stiletto Red' for the button */
+    color: var(--warning);
+    border: none;
+    padding: 10px 30px;
+    font-size: 1.7rem;
+    font-family: inherit;
+    text-transform: uppercase;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 5px 5px 0px var(--void);
+    transition: all 0.2s ease;
+}
+
+.btn-case-file:hover {
+    box-shadow: 7px 7px 0px var(--void);
+    color: var(--newsprint);
+    background: #b30000; /* Darker red on hover */
+}
+
+/* --- THE CASE FILE PAPER --- */
+
+.paper-scrap {
+    position: relative;
+    z-index: 10;
+    background: #e4e0d4; 
+    padding: 20px 40px 40px;
+    width: 80%;
+    max-width: 500px;
+    min-height: 150px;
+    box-shadow: 
+        2px 2px 0px rgba(0,0,0,0.1),
+        15px 15px 30px rgba(0,0,0,0.4);
+    transform: rotate(-2deg);
+    border-left: 2px solid rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.paper-scrap::before { /* red line */
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 30px;
+    width: 1.5px;
+    height: 100%;
+    background: rgba(255, 0, 0, 0.2);
+}
+
+.paper-line-1 {
+    font-size: 1.7rem;
+    color: #444;
+    font-style: italic;
+    margin: 0;
+    opacity: 0.8;
+}
+
+.paper-line-2 {
+    font-size: 3.5rem;
+    color: #111;
+    font-weight: bolder;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0;
+    min-height: 2.2rem; /* Prevents paper from jumping when text appears */
+}
+
+/* --- THE HIDDEN BUTTON --- */
+#join-btn {
+    margin-top: 30px;
+    opacity: 0; /* Hidden by default */
+    transform: translateY(10px);
+    transition: opacity 1s ease, transform 1s ease;
+    z-index: 11;
+}
+
+#join-btn.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* --- ATMOSPHERE --- */
+
+.vignette {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* Creates a "tunnel vision" light source in the center */
+    background: radial-gradient(circle, transparent 20%, rgba(0,0,0,0.8) 80%);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.grain {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* This creates a subtle noise texture */
+    background-image: url("https://media.giphy.com/media/oEI9uWUicGPoY/giphy.gif"); 
+    opacity: var(--grain-opacity); /* Keep this very low (0.05) */
+    pointer-events: none;
+    z-index: 99;
+    mix-blend-mode: overlay;
+}
+
+.scanlines {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+        to bottom,
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.1) 50%
+    );
+    background-size: 100% 4px; /* Thin horizontal lines */
+    z-index: 98;
+    pointer-events: none;
+    opacity: 0.3;
+}
+
+
+
+
+
+/* --- SHARK TANK DASHBOARD LAYOUT (The Grid) --- */
+.dashboard-container {
+    display: grid;
+    grid-template-columns: 3fr 1fr; /* 75% Graph, 25% Sidebar */
+    grid-template-rows: auto 1fr;   /* Header size, remaining height */
+    gap: 20px;
+    padding: 20px;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+/* --- ZONE A: THE SONAR (Graph) --- */
+.zone-sonar {
+    grid-column: 1 / 2;
+    grid-row: 2 / 3;
+    background: rgba(0, 20, 30, 0.8);
+    border: 1px solid #00443a;
+    position: relative;
+    border-radius: 5px;
+    padding: 10px;
+}
+
+/* --- ZONE B: THE JAWS (Verdict Box) --- */
+.zone-verdict {
+    grid-column: 2 / 3;
+    grid-row: 2 / 3;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.verdict-box {
+    background: rgba(0, 0, 0, 0.5);
+    border: 2px solid #ff3333; /* Danger Red border */
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(255, 51, 51, 0.2);
+    border-radius: 5px;
+}
+
+.verdict-label {
+    font-size: 0.9rem;
+    color: #ff3333;
+    margin-bottom: 10px;
+}
+
+.verdict-result {
+    font-size: 1.8rem;
+    font-weight: bold;
+    color: #fff;
+    word-break: break-all;
+}
+
+.confidence-bar {
+    width: 100%;
+    height: 10px;
+    background: #330000;
+    margin-top: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.confidence-fill {
+    height: 100%;
+    background: #ff3333;
+    width: 0%; /* JS will update this */
+    transition: width 0.5s ease;
+}
+
+/* --- ZONE C: FEEDING FRENZY (Log) --- */
+.zone-log {
+    flex-grow: 1; /* Takes up remaining space in sidebar */
+    background: rgba(0, 20, 30, 0.5);
+    border: 1px solid #00443a;
+    overflow-y: auto; /* Scrollable */
+    padding: 10px;
+    font-size: 0.8rem;
+}
+
+.log-entry {
+    border-bottom: 1px solid #00443a;
+    padding: 8px 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+.log-entry:last-child {
+    border-bottom: none;
+}

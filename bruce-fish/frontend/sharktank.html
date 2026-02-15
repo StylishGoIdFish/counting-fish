@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shark Tank | Active Monitoring</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center;">
+            <h2>Active Monitoring Station</h2>
+            <div id="status-indicator" style="color: #00ffcc;">● LIVE</div>
+
+            <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center;">
+              <h2>Active Monitoring Station</h2>
+              
+              <div style="display: flex; gap: 15px; align-items: center;">
+                  <button id="btn-scan" onclick="triggerManualScan()" style="
+                      background: transparent; 
+                      color: #00ffcc; 
+                      border: 1px solid #00ffcc; 
+                      padding: 8px 20px; 
+                      cursor: pointer; 
+                      font-family: inherit;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                      font-weight: bold;
+                  ">INITIATE SCAN</button>
+                  
+                  <div id="status-indicator" style="color: #00ffcc;">● READY</div>
+              </div>
+            </div>
+        </div>
+
+        <div class="zone-sonar">
+            <canvas id="sonarChart"></canvas>
+        </div>
+
+        <div class="zone-verdict">
+            <div class="verdict-box">
+                <div class="verdict-label">DETECTED TARGET</div>
+                <div class="verdict-result" id="verdict-text">SCANNING...</div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" id="confidence-meter"></div>
+                </div>
+                <div style="margin-top: 5px; font-size: 0.8rem; color: #888;" id="confidence-text">0% Confidence</div>
+            </div>
+            
+            <div class="zone-log" id="log-container">
+                <div class="log-entry">
+                    <span>System initialized.</span>
+                    <span>--:--:--</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script> 
+
+    <script>
+        // --- 1. SETUP CHART.JS ---
+        const ctx = document.getElementById('sonarChart').getContext('2d');
+        const sonarChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: Array(300).fill(''), // Placeholder X-axis
+                datasets: [{
+                    label: 'Memory Access Latency',
+                    data: [],
+                    borderColor: '#00ffcc',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    tension: 0.4,
+                    fill: true,
+                    backgroundColor: 'rgba(0, 255, 204, 0.1)'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false, // Disable animation for performance
+                scales: {
+                    x: { display: false },
+                    y: { 
+                        display: true, 
+                        grid: { color: '#00443a' },
+                        suggestedMin: 0,
+                        suggestedMax: 20
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // --- NEW MANUAL TRIGGER LOGIC ---
+        function triggerManualScan() {
+            if (window.recording) return;
+
+            // 1. Disable Button
+            const btn = document.getElementById("btn-scan");
+            btn.disabled = true;
+            btn.style.opacity = "0.5";
+            btn.innerText = "SCANNING...";
+
+            // 2. Start the Sensor (script.js)
+            if (typeof window.collectTrace === 'function') {
+                window.collectTrace(); 
+                
+                // 3. Wait for the result (Polling only while recording)
+                const checkInterval = setInterval(() => {
+                    const traces = window.traces;
+                    if (traces && traces.length > 0) {
+                        const latestTrace = traces[traces.length - 1];
+                        
+                        // If this is a NEW trace we haven't seen yet
+                        if (window.lastProcessedTrace !== latestTrace) {
+                            window.lastProcessedTrace = latestTrace;
+                            
+                            // Stop checking
+                            clearInterval(checkInterval);
+                            
+                            // Process it
+                            updateSonar(latestTrace);
+                            analyzeTrace(latestTrace);
+                            
+                            // Reset Button
+                            btn.disabled = false;
+                            btn.style.opacity = "1";
+                            btn.innerText = "INITIATE SCAN";
+                        }
+                    }
+                }, 500); // Check every 0.5s
+            }
+        }
+
+        function updateSonar(traceData) {
+            // Downsample if trace is huge (Chart.js can lag with 3000 points)
+            const displayData = traceData.filter((_, i) => i % 5 === 0); 
+            sonarChart.data.datasets[0].data = displayData;
+            sonarChart.data.labels = Array(displayData.length).fill('');
+            sonarChart.update();
+        }
+
+        async function analyzeTrace(traceData) {
+            document.getElementById("status-indicator").innerText = "● ANALYZING";
+            document.getElementById("status-indicator").style.color = "yellow";
+
+            try {
+                // --- THE KEY CONNECTION STEP ---
+                const response = await fetch('http://localhost:8000/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ trace: traceData })
+                });
+
+                const result = await response.json();
+                console.log("🦈 Backend Verdict:", result); // DEBUG PRINT
+
+                // Update UI
+                const site = result.website;
+                const conf = Math.round(result.confidence * 100);
+                
+                document.getElementById("verdict-text").innerText = site.toUpperCase();
+                document.getElementById("confidence-meter").style.width = conf + "%";
+                document.getElementById("confidence-text").innerText = conf + "% Confidence";
+
+                // Add to Log
+                const log = document.getElementById("log-container");
+                const entry = document.createElement("div");
+                entry.className = "log-entry";
+                entry.innerHTML = `
+                    <span style="color: #fff">${site}</span>
+                    <span style="color: #888">${new Date().toLocaleTimeString()}</span>
+                `;
+                log.prepend(entry);
+
+            } catch (error) {
+                console.error("❌ Connection Error:", error);
+                document.getElementById("verdict-text").innerText = "CONNECTION ERROR";
+            } finally {
+                document.getElementById("status-indicator").innerText = "● LIVE";
+                document.getElementById("status-indicator").style.color = "#00ffcc";
+            }
+        }
+    </script>
+</body>
+</html>
