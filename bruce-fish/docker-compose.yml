@@ -1,7 +1,5 @@
-version: '3.8'
-
 services:
-  # --- Backend ---
+  # Backend
   backend:
     build: ./backend
     container_name: shark_bite
@@ -10,10 +8,10 @@ services:
     volumes:
       - ./backend:/app  # live Reload for main.py
 
-  # --- Frontend ---
+  # Frontend
   frontend:
     build: ./frontend
-    container_name: bruce_site
+    container_name: shark_site
     ports:
       - "3000:80"    # Maps localhost:3000 to Nginx port 80
     depends_on:
