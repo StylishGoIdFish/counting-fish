@@ -37,8 +37,9 @@ function startCountingFish() {
   // -----------------------------
   // State
   // -----------------------------
-  var mode = "monitor";   // default for demo
-  var qMs = 2;            // quantization bucket in ms
+  var mode = " + JSON.stringify(mode) + ";
+  var qMs = " + JSON.stringify(qMs) + ";
+
 
 
   // Keep references to all wrapped workers so we can update their mode later
@@ -65,12 +66,15 @@ function startCountingFish() {
   var counts = {
     perfNow: 0,
     dateNow: 0,
-    raf: 0
+    raf: 0,
+
     // Worker-side counters (reported by our worker wrapper)
     workerPerfNow: 0,
     workerDateNow: 0,
     workerBurstMax: 0
   };
+
+  
 
   var flags = {
     wasmUsed: false,
@@ -228,7 +232,25 @@ function startCountingFish() {
     }
 
 
+    broadcastModeToWorkers();
+
   });
+
+  function broadcastModeToWorkers() {
+    for (var i = 0; i < trackedWorkers.length; i++) {
+      try {
+        trackedWorkers[i].postMessage({
+          source: "countingfish",
+          type: "CF_SET_MODE",
+          mode: mode,
+          q_ms: qMs
+        });
+      } catch (e) {
+        // worker might be dead, ignore
+      }
+    }
+  }
+
 
   function ingestWorkerTelemetry(payload) {
     if (!payload) return;
@@ -380,191 +402,152 @@ function startCountingFish() {
     console.log("[CF][inject] About to wrap Worker. Worker is currently:", window.Worker);
     var RealWorker = window.Worker;
 
-    function buildWorkerWrapperSource(originalUrl) {
-      return `
-        (function () {
-          "use strict";
-
-          var mode = "monitor";
-          var qMs = 2;
-
-          var counts = { perfNow: 0, dateNow: 0 };
-          var perfNowWindowCount = 0;
-          var perfNowPer100msMax = 0;
-
-          function quantizeMs(t) {
-            return Math.floor(t / qMs) * qMs;
-          }
-
-          // Burst window reset every 100ms
-          setInterval(function () {
-            if (perfNowWindowCount > perfNowPer100msMax) {
-              perfNowPer100msMax = perfNowWindowCount;
-            }
-            perfNowWindowCount = 0;
-          }, 100);
-
-          // Send telemetry to the page every 1s
-          setInterval(function () {
-            try {
-              postMessage({
-                __cf: "worker_telemetry",
-                payload: {
-                  counts: { perfNow: counts.perfNow, dateNow: counts.dateNow },
-                  bursts: { perfNowPer100msMax: perfNowPer100msMax },
-                  mode: mode,
-                  q_ms: qMs,
-                  ts: Date.now()
-                }
-              });
-            } catch (e) {}
-
-            counts.perfNow = 0;
-            counts.dateNow = 0;
-            perfNowPer100msMax = 0;
-          }, 1000);
-
-          // Listen for mode updates from the page
-          self.addEventListener("message", function (e) {
-            var d = e.data;
-            if (!d || d.__cf !== "set_mode") return;
-
-            if (d.mode === "off" || d.mode === "monitor" || d.mode === "harden") {
-              mode = d.mode;
-            }
-            if (typeof d.q_ms === "number" && isFinite(d.q_ms) && d.q_ms > 0 && d.q_ms <= 50) {
-              qMs = d.q_ms;
-            }
-          });
-
-          // Wrap performance.now
-          if (self.performance && typeof self.performance.now === "function") {
-            var realPerfNow = self.performance.now.bind(self.performance);
-
-            self.performance.now = function () {
-              counts.perfNow++;
-              perfNowWindowCount++;
-
-              var t = realPerfNow();
-              if (mode === "harden") return quantizeMs(t);
-              return t;
-            };
-          }
-
-          // Wrap Date.now
-          if (typeof Date.now === "function") {
-            var realDateNow = Date.now.bind(Date);
-
-            Date.now = function () {
-              counts.dateNow++;
-              var t = realDateNow();
-              if (mode === "harden") return quantizeMs(t);
-              return t;
-            };
-          }
-
-          // Load the original worker script AFTER wrappers are installed
-          try {
-            importScripts(${JSON.stringify(originalUrl)});
-          } catch (e) {
-            try { postMessage({ __cf: "worker_error", error: String(e) }); } catch (e2) {}
-          }
-        })();
-      `;
+    function isModuleWorker(options) {
+      return options && options.type === "module";
     }
 
-    window.Worker = function (scriptUrl, options) {
+    function toAbsUrl(u) {
+      try {
+        return new URL(u, window.location.href).href;
+      } catch (e) {
+        return u;
+      }
+    }
 
-      console.log("[CF][Worker hook] called with:", scriptUrl, options, "time=", performance.now());
+    function makeClassicBootstrapUrl(originalUrl) {
+      var abs = toAbsUrl(originalUrl);
+      console.log("CF importing:", abs);
 
-      // Count worker creation (page-level flag)
+      var src =
+        "(function(){\n" +
+        "  'use strict';\n" +
+        "  var mode = 'monitor';\n" +
+        "  var qMs = 2;\n" +
+        "  function quantizeMs(t){ return Math.floor(t / qMs) * qMs; }\n" +
+
+        "  var counts = { perfNow:0, dateNow:0 };\n" +
+        "  var flags = { wasmUsed:false };\n" +
+        "  var perfNowWindowCount = 0;\n" +
+        "  var perfNowPer100msMax = 0;\n" +
+
+        "  setInterval(function(){\n" +
+        "    if(perfNowWindowCount > perfNowPer100msMax) perfNowPer100msMax = perfNowWindowCount;\n" +
+        "    perfNowWindowCount = 0;\n" +
+        "  }, 100);\n" +
+
+        "  setInterval(function(){\n" +
+        "    try {\n" +
+        "      postMessage({\n" +
+        "        source:'countingfish',\n" +
+        "        type:'CF_WORKER_TELEMETRY',\n" +
+        "        payload:{\n" +
+        "          counts:{ perfNow:counts.perfNow, dateNow:counts.dateNow },\n" +
+        "          bursts:{ perfNowPer100msMax:perfNowPer100msMax },\n" +
+        "          flags:{ wasmUsed:!!flags.wasmUsed },\n" +
+        "          ts: Date.now()\n" +
+        "        }\n" +
+        "      });\n" +
+        "    } catch(e) {}\n" +
+        "    counts.perfNow=0;\n" +
+        "    counts.dateNow=0;\n" +
+        "    perfNowPer100msMax=0;\n" +
+        "    flags.wasmUsed=false;\n" +
+        "  }, 1000);\n" +
+
+        "  addEventListener('message', function(ev){\n" +
+        "    var d = ev && ev.data;\n" +
+        "    if(!d || d.source!=='countingfish' || d.type!=='CF_SET_MODE') return;\n" +
+        "    if(d.mode==='off'||d.mode==='monitor'||d.mode==='harden') mode=d.mode;\n" +
+        "    if(typeof d.q_ms==='number') qMs=d.q_ms;\n" +
+        "  });\n" +
+
+        "  if(self.performance && typeof self.performance.now==='function'){\n" +
+        "    var realPerfNow=self.performance.now.bind(self.performance);\n" +
+        "    self.performance.now=function(){\n" +
+        "      counts.perfNow++;\n" +
+        "      perfNowWindowCount++;\n" +
+        "      var t=realPerfNow();\n" +
+        "      if(mode==='harden') return quantizeMs(t);\n" +
+        "      return t;\n" +
+        "    };\n" +
+        "  }\n" +
+
+        "  if(typeof Date.now==='function'){\n" +
+        "    var realDateNow=Date.now.bind(Date);\n" +
+        "    Date.now=function(){\n" +
+        "      counts.dateNow++;\n" +
+        "      var t=realDateNow();\n" +
+        "      if(mode==='harden') return quantizeMs(t);\n" +
+        "      return t;\n" +
+        "    };\n" +
+        "  }\n" +
+
+        "  if(self.WebAssembly){\n" +
+        "    if(typeof WebAssembly.instantiate==='function'){\n" +
+        "      var ri=WebAssembly.instantiate.bind(WebAssembly);\n" +
+        "      WebAssembly.instantiate=function(){ flags.wasmUsed=true; return ri.apply(null, arguments); };\n" +
+        "    }\n" +
+        "    if(typeof WebAssembly.instantiateStreaming==='function'){\n" +
+        "      var ris=WebAssembly.instantiateStreaming.bind(WebAssembly);\n" +
+        "      WebAssembly.instantiateStreaming=function(){ flags.wasmUsed=true; return ris.apply(null, arguments); };\n" +
+        "    }\n" +
+        "  }\n" +
+
+        "  try { importScripts(" + JSON.stringify(abs) + "); } catch(e) {}\n" +
+        "})();\n";
+
+      var blob = new Blob([src], { type: "text/javascript" });
+      return URL.createObjectURL(blob);
+    }
+
+    window.Worker = function (scriptURL, options) {
+
       flags.workersSpawned++;
 
-      // Module workers: v1 fallback (importScripts doesn't work in modules)
-      if (options && options.type === "module") {
-        return new RealWorker(scriptUrl, options);
-      }
-      
-      var originalUrl;
-      try {
-        originalUrl = new URL(String(scriptUrl), document.baseURI).href;
-      } catch (e) {
-        originalUrl = String(scriptUrl);
+      if (
+        isModuleWorker(options) ||
+        typeof scriptURL === "string" &&
+        (scriptURL.startsWith("blob:") || scriptURL.startsWith("data:"))
+      ) {
+        // Skip bootstrap for module/blob/data workers
+        return new RealWorker(scriptURL, options);
       }
 
-      // Create wrapper worker from a Blob
-      var wrapperSrc = buildWorkerWrapperSource(originalUrl);
-      var blob = new Blob([wrapperSrc], { type: "text/javascript" });
-      var blobUrl = URL.createObjectURL(blob);
+      var bootUrl = makeClassicBootstrapUrl(scriptURL);
+      var w = new RealWorker(bootUrl, options);
 
-      try {
-      var w = new RealWorker(blobUrl);
-      console.log("[CF][Worker hook] wrapper worker created OK. originalUrl=", originalUrl);
-      } catch (e){
-        console.error("[CF][Worker hook] FAILED to create wrapper worker:", e);
-        console.warn("[CF][Worker hook] Falling back to real worker:", scriptUrl);
-        return new RealWorker(scriptUrl, options);
-      }
+      w.addEventListener("error", function (e) {
+        try { console.warn("CF bootstrap worker error:", e && (e.message || e)); } catch (_) {}
+      });
+      w.addEventListener("messageerror", function (e) {
+        try { console.warn("CF bootstrap worker messageerror:", e); } catch (_) {}
+      });
 
 
       trackedWorkers.push(w);
-      // try { URL.revokeObjectURL(blobUrl); } catch (e) {}
 
-      // Send current mode immediately
-      try { w.postMessage({ __cf: "set_mode", mode: mode, q_ms: qMs }); } catch (e) {}
+      // Push current mode/q_ms immediately so worker doesn't lag behind UI
+      try {
+        w.postMessage({
+          source: "countingfish",
+          type: "CF_SET_MODE",
+          mode: mode,
+          q_ms: qMs
+        });
+      } catch (e) {}
 
-      // Intercept messages from real worker
-      var pageOnMessage = null;
 
-      // Intercept assignment to worker.onmessage
-      Object.defineProperty(w, "onmessage", {
-        get: function () {
-          return pageOnMessage;
-        },
-        set: function (handler) {
-          pageOnMessage = handler;
-        }
-      });
-
-      w.addEventListener("message", function (evt) {
-        var d = evt.data;
-
-        // Handle internal telemetry
-        if (d && d.__cf) {
-
-          if (d.__cf === "worker_telemetry" && d.payload) {
-            var c = d.payload.counts || {};
-            var b = d.payload.bursts || {};
-
-            counts.workerPerfNow += (c.perfNow || 0);
-            counts.workerDateNow += (c.dateNow || 0);
-
-            var wb = (b.perfNowPer100msMax || 0);
-            if (wb > counts.workerBurstMax) {
-              counts.workerBurstMax = wb;
-            }
-          }
-
-          // Swallow internal messages so the page never sees them
-          return;
-        }
-
-        // Forward real worker messages to the page
-        if (typeof pageOnMessage === "function") {
-          pageOnMessage.call(w, evt);
-        }
+      // Aggregate telemetry
+      w.addEventListener("message", function (ev) {
+        var d = ev && ev.data;
+        if (!d || d.source !== "countingfish" || d.type !== "CF_WORKER_TELEMETRY") return;
+        ingestWorkerTelemetry(d.payload);
       });
 
       return w;
-      
     };
 
     
-
-
-    console.log("[CF][inject] Worker wrapped. Worker is now:", window.Worker);
-    window.__cf_worker_wrapped_at = performance.now();
-
 
     window.Worker.prototype = RealWorker.prototype;
 

@@ -4,15 +4,8 @@
   "version": "0.1",
   "manifest_version": 3,
 
-  "permissions": [
-    "storage",
-    "tabs",
-    "scripting"
-  ],
-
-  "host_permissions": [
-    "<all_urls>"
-  ],
+  "permissions": ["storage", "tabs", "notifications"],
+  "host_permissions": ["<all_urls>"],
 
   "background": {
     "service_worker": "background.js"

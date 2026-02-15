@@ -96,6 +96,13 @@ var STORAGE_KEY = "cf_site_settings";
    Helpers
 ----------------------------- */
 
+function riskBand(score) {
+  if (score >= 60) return "HIGH";
+  if (score >= 25) return "MID";
+  return "LOW";
+}
+
+
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
@@ -130,7 +137,9 @@ function getOrInitState(origin) {
       reasons: [],
       lastTabId: null,
       href: null,
-      lastUpdatedTs: null
+      lastUpdatedTs: null, 
+      lastBand: "LOW",
+      lastNotifyTs: 0
     };
   }
   return stateByOrigin[origin];
@@ -178,6 +187,40 @@ function computeScoreAndReasons(telemetryPayload) {
     score += 5;
     reasons.push("Worker spawned: 1");
   }
+
+  // -----------------------------
+  // Worker signals (new)
+  // -----------------------------
+  var w = telemetryPayload.workers || {};
+  var wc = w.counts || {};
+  var wb = w.bursts || {};
+  var wf = w.flags || {};
+
+  var wPerfNow = wc.perfNow || 0;
+  var wBurst100 = wb.perfNowPer100msMax || 0;
+  var wWasmUsed = !!wf.wasmUsed;
+
+  // High-frequency timing inside workers
+  if (wPerfNow > 50000) {
+    score += 45;
+    reasons.push("Worker high-frequency performance.now: " + wPerfNow + " calls/sec");
+  } else if (wPerfNow > 5000) {
+    score += 20;
+    reasons.push("Worker elevated performance.now usage: " + wPerfNow + " calls/sec");
+  }
+
+  // Burstiness inside workers
+  if (wBurst100 > 10000) {
+    score += 15;
+    reasons.push("Worker timing burst detected: " + wBurst100 + " calls/100ms max");
+  }
+
+  // Worker WASM
+  if (wWasmUsed) {
+    score += 10;
+    reasons.push("Worker WebAssembly used");
+  }
+
 
   score = clamp(score, 0, 100);
 
@@ -311,6 +354,7 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       var sr = computeScoreAndReasons(msg.payload || {});
       st.score = sr.score;
       st.reasons = sr.reasons;
+      maybeNotifyRiskJump(origin, st);
 
       // Update badge for that tab (if known)
       if (typeof st.lastTabId === "number") {
@@ -475,7 +519,25 @@ chrome.runtime.onInstalled.addListener(function () {
   registerMainWorldInjector();
 });
 
-chrome.runtime.onStartup.addListener(function () {
-  registerMainWorldInjector();
-});
+
+
+function maybeNotifyRiskJump(origin, st) {
+  if (!st.score || st.score < 25) return; // only yellow/red
+
+  var band = st.score >= 60 ? "HIGH" : "MID";
+
+  chrome.notifications.create(
+    "cf_" + Date.now(), // unique ID every time
+    {
+      type: "basic",
+      iconUrl: chrome.runtime.getURL("icon128.png"),
+      title: band === "HIGH"
+        ? "CountingFish: HIGH timing risk"
+        : "CountingFish: MID timing risk",
+      message: (st.reasons && st.reasons[0])
+        ? st.reasons[0]
+        : "Suspicious timing behavior detected"
+    }
+  );
+}
 
