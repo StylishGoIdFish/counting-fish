@@ -3,90 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shark Tank | Active Monitoring</title>
+    <title>Shark Tank | Case No. 2026</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body class="dashboard-body">
+
+    <div class="grain"></div>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
 
     <div class="dashboard-container">
-        <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center;">
-            <h2>Active Monitoring Station</h2>
-            <div id="status-indicator" style="color: #00ffcc;">● LIVE</div>
-
-            <div style="grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center;">
-              <h2>Active Monitoring Station</h2>
-              
-              <div style="display: flex; gap: 15px; align-items: center;">
-                  <button id="btn-scan" onclick="triggerManualScan()" style="
-                      background: transparent; 
-                      color: #00ffcc; 
-                      border: 1px solid #00ffcc; 
-                      padding: 8px 20px; 
-                      cursor: pointer; 
-                      font-family: inherit;
-                      text-transform: uppercase;
-                      letter-spacing: 1px;
-                      font-weight: bold;
-                  ">INITIATE SCAN</button>
-                  
-                  <div id="status-indicator" style="color: #00ffcc;">● READY</div>
-              </div>
-            </div>
-        </div>
-
-        <div class="zone-sonar">
-            <canvas id="sonarChart"></canvas>
-        </div>
-
-        <div class="zone-verdict">
-            <div class="verdict-box">
-                <div class="verdict-label">DETECTED TARGET</div>
-                <div class="verdict-result" id="verdict-text">SCANNING...</div>
-                <div class="confidence-bar">
-                    <div class="confidence-fill" id="confidence-meter"></div>
-                </div>
-                <div style="margin-top: 5px; font-size: 0.8rem; color: #888;" id="confidence-text">0% Confidence</div>
+        
+        <header class="dashboard-header">
+            <div class="header-branding">
+                <h2 class="agency-title">STAKEOUT STATION: UNIT 04</h2>
+                <div id="status-indicator" class="status-live">● READY</div>
             </div>
             
-            <div class="zone-log" id="log-container">
-                <div class="log-entry">
-                    <span>System initialized.</span>
-                    <span>--:--:--</span>
+            <div class="header-controls">
+                <button id="btn-scan" class="btn-case-file" onclick="triggerManualScan()">
+                    Initiate Scan
+                </button>
+            </div>
+        </header>
+
+        <section class="zone-sonar" id="monitor-area">
+            <div class="crt-screen"></div>
+            <div class="monitor-label">SIGNAL INTERCEPT</div>
+            <canvas id="sonarChart"></canvas>
+        </section>
+
+        <aside class="sidebar-desk">
+            
+            <div class="verdict-box dossier-folder">
+                <div class="folder-tab">FILE_026</div>
+                <div class="verdict-label">SUSPECT CLASSIFICATION</div>
+                
+                <div class="verdict-result" id="verdict-text">IDLE...</div>
+                
+                <div class="confidence-container">
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="confidence-meter"></div>
+                    </div>
+                    <div id="confidence-text" class="confidence-percent">0% Confidence</div>
                 </div>
             </div>
-        </div>
+
+            <div class="zone-log-container">
+                <h3 class="log-header">SHARK BITES (HISTORY)</h3>
+                <div class="zone-log" id="log-container">
+                    <div class="log-entry">
+                        <span>SYSTEM_READY</span>
+                        <span>--:--:--</span>
+                    </div>
+                </div>
+            </div>
+            
+        </aside>
     </div>
 
     <script src="script.js"></script> 
 
     <script>
-        // --- 1. SETUP CHART.JS ---
+        // --- 1. SETUP CHART.JS (Noir CRT Skin) ---
         const ctx = document.getElementById('sonarChart').getContext('2d');
         const sonarChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: Array(300).fill(''), // Placeholder X-axis
+                labels: Array(300).fill(''),
                 datasets: [{
-                    label: 'Memory Access Latency',
+                    label: 'Signal Latency',
                     data: [],
-                    borderColor: '#00ffcc',
-                    borderWidth: 1,
+                    borderColor: '#00ff41', // Phosphor Green
+                    borderWidth: 2,
                     pointRadius: 0,
                     tension: 0.4,
                     fill: true,
-                    backgroundColor: 'rgba(0, 255, 204, 0.1)'
+                    backgroundColor: 'rgba(0, 255, 65, 0.05)'
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false, // Disable animation for performance
+                animation: false,
                 scales: {
                     x: { display: false },
                     y: { 
                         display: true, 
-                        grid: { color: '#00443a' },
+                        grid: { color: 'rgba(0, 255, 65, 0.1)' },
+                        ticks: { color: '#00ff41', font: { family: 'monospace' } },
                         suggestedMin: 0,
                         suggestedMax: 20
                     }
@@ -95,49 +101,48 @@
             }
         });
 
-        // --- NEW MANUAL TRIGGER LOGIC ---
+        // --- THE PING SYSTEM ---
+        function triggerPing() {
+            const monitor = document.getElementById('monitor-area');
+            const ping = document.createElement('div');
+            ping.className = 'red-ping';
+            ping.style.left = (Math.random() * 80 + 10) + '%';
+            ping.style.top = (Math.random() * 80 + 10) + '%';
+            monitor.appendChild(ping);
+            setTimeout(() => ping.remove(), 1200);
+        }
+
+        // --- SCAN LOGIC (Preserving your functionality) ---
         function triggerManualScan() {
             if (window.recording) return;
 
-            // 1. Disable Button
             const btn = document.getElementById("btn-scan");
             btn.disabled = true;
-            btn.style.opacity = "0.5";
             btn.innerText = "SCANNING...";
 
-            // 2. Start the Sensor (script.js)
             if (typeof window.collectTrace === 'function') {
                 window.collectTrace(); 
                 
-                // 3. Wait for the result (Polling only while recording)
                 const checkInterval = setInterval(() => {
                     const traces = window.traces;
                     if (traces && traces.length > 0) {
                         const latestTrace = traces[traces.length - 1];
-                        
-                        // If this is a NEW trace we haven't seen yet
                         if (window.lastProcessedTrace !== latestTrace) {
                             window.lastProcessedTrace = latestTrace;
-                            
-                            // Stop checking
                             clearInterval(checkInterval);
                             
-                            // Process it
                             updateSonar(latestTrace);
                             analyzeTrace(latestTrace);
                             
-                            // Reset Button
                             btn.disabled = false;
-                            btn.style.opacity = "1";
                             btn.innerText = "INITIATE SCAN";
                         }
                     }
-                }, 500); // Check every 0.5s
+                }, 500);
             }
         }
 
         function updateSonar(traceData) {
-            // Downsample if trace is huge (Chart.js can lag with 3000 points)
             const displayData = traceData.filter((_, i) => i % 5 === 0); 
             sonarChart.data.datasets[0].data = displayData;
             sonarChart.data.labels = Array(displayData.length).fill('');
@@ -145,11 +150,11 @@
         }
 
         async function analyzeTrace(traceData) {
-            document.getElementById("status-indicator").innerText = "● ANALYZING";
-            document.getElementById("status-indicator").style.color = "yellow";
+            const status = document.getElementById("status-indicator");
+            status.innerText = "● ANALYZING";
+            status.style.color = "#ffcc00";
 
             try {
-                // --- THE KEY CONNECTION STEP ---
                 const response = await fetch('http://localhost:8000/analyze', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -157,9 +162,11 @@
                 });
 
                 const result = await response.json();
-                console.log("🦈 Backend Verdict:", result); // DEBUG PRINT
-
-                // Update UI
+                
+                // Visual "Hit" trigger
+                triggerPing();
+                
+                // Update Dossier
                 const site = result.website;
                 const conf = Math.round(result.confidence * 100);
                 
@@ -167,22 +174,22 @@
                 document.getElementById("confidence-meter").style.width = conf + "%";
                 document.getElementById("confidence-text").innerText = conf + "% Confidence";
 
-                // Add to Log
+                // Update "Shark Bites" Log
                 const log = document.getElementById("log-container");
                 const entry = document.createElement("div");
-                entry.className = "log-entry";
+                entry.className = "log-entry hit-animation";
                 entry.innerHTML = `
-                    <span style="color: #fff">${site}</span>
-                    <span style="color: #888">${new Date().toLocaleTimeString()}</span>
+                    <span style="color: var(--newsprint); font-weight:bold;">${site.toUpperCase()}</span>
+                    <span style="opacity: 0.5">${new Date().toLocaleTimeString()}</span>
                 `;
                 log.prepend(entry);
 
             } catch (error) {
                 console.error("❌ Connection Error:", error);
-                document.getElementById("verdict-text").innerText = "CONNECTION ERROR";
+                document.getElementById("verdict-text").innerText = "SIGNAL LOST";
             } finally {
-                document.getElementById("status-indicator").innerText = "● LIVE";
-                document.getElementById("status-indicator").style.color = "#00ffcc";
+                status.innerText = "● LIVE";
+                status.style.color = "var(--newsprint)";
             }
         }
     </script>
